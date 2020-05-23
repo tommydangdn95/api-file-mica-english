@@ -6,7 +6,12 @@ using System.Threading.Tasks;
 using ClosedXML.Excel;
 using DocumentFormat.OpenXml.Drawing;
 using DocumentFormat.OpenXml.Drawing.Charts;
+using Mica.File.Application.Command.Create;
+using Mica.File.Common;
+using Mica.File.Model.Request;
 using Mica.File.Models;
+using Mica.File.Service;
+using Mica.File.Service.OfficeFileService;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -18,96 +23,60 @@ namespace Mica.File.Api.Controllers
     public class FileController : ControllerBase
     {
         private readonly IWebHostEnvironment _env;
+        private readonly IFileUploadService _fileUploadService;
+        private readonly IOfficeFileService _officeFileService;
 
-        public FileController(IWebHostEnvironment env)
+        public FileController(IWebHostEnvironment env, IFileUploadService fileUploadService, IOfficeFileService officeFileService)
         {
-            _env = env;
+            this._env = env;
+            this._fileUploadService = fileUploadService;
+            this._officeFileService = officeFileService;
         }
         [HttpPost]
-        public async Task<IActionResult> Upload(IFormFile file)
+        public async Task<IActionResult> ImportExcelFile(IFormFile file)
         {
             if (file != null && file.Length >= 0)
             {
-                // save file
-                await SaveFile(file);
-
-                var listWord = await this.GetListWorkAsyn(file);
-                if (listWord.Count > 0)
+                using (var fileStreamMemory = new MemoryStream())
                 {
-                    return Ok(listWord);
+                    await file.CopyToAsync(fileStreamMemory);
+                    var id = Guid.NewGuid();
+
+                    // get list word from excel file
+                    var listWord = await this._officeFileService.GetListWordAsync(fileStreamMemory);
+
+                    // save file to disk
+                    PathRequest pathRequest = new PathRequest
+                    {
+                        ServerPath = this._env.ContentRootPath,
+                        FielType = FileTypeExtension.OfficeExtension.TypeName,
+                        FileName = id + System.IO.Path.GetExtension(file.FileName)
+                    };
+                    var path = this._fileUploadService.GetPath(pathRequest);
+                    await this._fileUploadService.SaveFileOnDisk(fileStreamMemory, path);
+
+                    // save file to db
+                    CreateFileCommand createFileCommand = new CreateFileCommand
+                    {
+                        FileName = file.FileName,
+                        FileType = (int)FileType.Office,
+                        Id = id,
+                        Path = path
+                    };
+
+                    await this._fileUploadService.SaveFileToDb(createFileCommand);
+
+                    var reponse = new
+                    {
+                        id,
+                        listWord
+                    };
+
+                    return Ok(reponse);
                 }
             }
 
             return BadRequest();
-        }
-
-
-        private async Task SaveFile(IFormFile file)
-        {
-            string serverPath = _env.ContentRootPath;
-            string folderDataName = "Data";
-            string year = DateTime.Now.Year.ToString();
-            string month = DateTime.Now.Month.ToString();
-            string day = DateTime.Now.Day.ToString();
-            string fileName = Guid.NewGuid() + System.IO.Path.GetExtension(file.FileName);
-            string pathData = System.IO.Path.Combine(serverPath, folderDataName, year, month, day);
-            if (!Directory.Exists(pathData))
-            {
-                Directory.CreateDirectory(pathData);
-                
-            }
-
-            var pathFileData = System.IO.Path.Combine(pathData, fileName);
-            using (var fileStrem = new FileStream(pathFileData, FileMode.Create))
-            {
-                await file.CopyToAsync(fileStrem);
-            }
-        }
-
-        private async Task<List<Word>> GetListWorkAsyn(IFormFile file)
-        {
-            return await Task.FromResult(GetListWord(file));
-        }
-
-
-        private List<Word> GetListWord(IFormFile file) 
-        {
-            List<Word> listWord = new List<Word>();
-            using (var workbook = new XLWorkbook(file.OpenReadStream()))
-            {
-                var ws = workbook.Worksheet(1);
-                var rows = ws.RangeUsed().RowsUsed().Skip(1).ToList();
-                var columns = ws.RangeUsed().ColumnsUsed().ToList();
-                foreach (var row in rows)
-                {
-                    Word word = new Word();
-                    int count = 0;
-                    foreach (var column in columns)
-                    {
-                        var columNumber = column.ColumnNumber();
-                        var rowNumer = row.RowNumber();
-                        var cell = ws.Cell(rowNumer, columNumber);
-                        var data = cell.Value.ToString();
-                        switch (count)
-                        {
-                            case 0:
-                                word.Name = data;
-                                break;
-                            case 1:
-                                word.Sysnonym = data;
-                                break;
-                            default:
-                                word.Mean = data;
-                                break;
-                        }
-                        count++;
-                    }
-
-                    listWord.Add(word);
-                }
-            }
-
-            return listWord;
         }
     }
 }

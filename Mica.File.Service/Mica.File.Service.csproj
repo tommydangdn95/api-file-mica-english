@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.95.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Mica.File.Application\Mica.File.Application.csproj" />
+    <ProjectReference Include="..\Mica.File.Model\Mica.File.Model.csproj" />
+  </ItemGroup>
+
+</Project>

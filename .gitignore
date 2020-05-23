@@ -5,3 +5,7 @@
 
 bin/
 obj/
+
+
+Mica.File.Api/Office/*
+.xlsx
