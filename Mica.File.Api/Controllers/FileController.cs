@@ -68,8 +68,7 @@ namespace Mica.File.Api.Controllers
 
                     var reponse = new
                     {
-                        id,
-                        listWord
+                        id
                     };
 
                     return Ok(reponse);
